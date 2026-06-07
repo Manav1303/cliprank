@@ -16,7 +16,6 @@ app.add_middleware(
 )
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-FFPROBE = FFMPEG.replace("ffmpeg", "ffprobe")
 
 class DownloadRequest(BaseModel):
     url: str
@@ -29,7 +28,6 @@ def health():
     return {
         "status": "ok",
         "ffmpeg": FFMPEG,
-        "ffprobe": FFPROBE,
         "yt_dlp": subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip()
     }
 
@@ -66,24 +64,12 @@ async def process_video(req: DownloadRequest):
         clips = []
         for i, start in enumerate(start_points):
             clip_path = f"{work_dir}/clip_{i+1}.mp4"
-            temp_path = f"{work_dir}/temp_{i+1}.mp4"
 
             subprocess.run([
                 FFMPEG, "-i", original,
                 "-ss", str(start), "-t", str(clip_dur),
-                "-c:v", "libx264", "-c:a", "aac", "-y", temp_path
+                "-c:v", "libx264", "-c:a", "aac", "-y", clip_path
             ], check=True, timeout=180)
-
-            if req.on_screen_text:
-                text = req.on_screen_text.replace("'", "\\'")
-                subprocess.run([
-                    FFMPEG, "-i", temp_path,
-                    "-vf", f"drawtext=text='{text}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.5:boxborderw=10:x=(w-text_w)/2:y=h-th-50",
-                    "-c:a", "copy", "-y", clip_path
-                ], check=True, timeout=180)
-                os.remove(temp_path)
-            else:
-                os.rename(temp_path, clip_path)
 
             clips.append({
                 "filename": f"clip_{i+1}.mp4",
