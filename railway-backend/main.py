@@ -14,6 +14,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Find ffmpeg/ffprobe paths
+def find_binary(name):
+    result = subprocess.run(["find", "/", "-name", name, "-type", "f"], 
+                          capture_output=True, text=True, timeout=10)
+    lines = [l for l in result.stdout.strip().split('\n') if l and 'nix' in l]
+    return lines[0] if lines else name
+
+FFMPEG = find_binary("ffmpeg")
+FFPROBE = find_binary("ffprobe")
+
 class DownloadRequest(BaseModel):
     url: str
     clip_count: int = 3
@@ -22,15 +32,11 @@ class DownloadRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    # Check tools
-    ffmpeg_path = subprocess.run(["which", "ffmpeg"], capture_output=True, text=True).stdout.strip()
-    ffprobe_path = subprocess.run(["which", "ffprobe"], capture_output=True, text=True).stdout.strip()
-    ytdlp_path = subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip()
     return {
         "status": "ok",
-        "ffmpeg": ffmpeg_path,
-        "ffprobe": ffprobe_path,
-        "yt_dlp": ytdlp_path
+        "ffmpeg": FFMPEG,
+        "ffprobe": FFPROBE,
+        "yt_dlp": subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip()
     }
 
 @app.post("/process")
@@ -45,10 +51,10 @@ async def process_video(req: DownloadRequest):
             "yt-dlp", "-f", "best[ext=mp4]/best",
             "--merge-output-format", "mp4",
             "-o", original, req.url
-        ], check=True, timeout=120)
+        ], check=True, timeout=180)
 
         result = subprocess.run([
-            "ffprobe", "-v", "error",
+            FFPROBE, "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             original
@@ -66,18 +72,18 @@ async def process_video(req: DownloadRequest):
             temp_path = f"{work_dir}/temp_{i+1}.mp4"
 
             subprocess.run([
-                "ffmpeg", "-i", original,
+                FFMPEG, "-i", original,
                 "-ss", str(start), "-t", str(clip_dur),
                 "-c:v", "libx264", "-c:a", "aac", "-y", temp_path
-            ], check=True, timeout=120)
+            ], check=True, timeout=180)
 
             if req.on_screen_text:
                 text = req.on_screen_text.replace("'", "\\'")
                 subprocess.run([
-                    "ffmpeg", "-i", temp_path,
+                    FFMPEG, "-i", temp_path,
                     "-vf", f"drawtext=text='{text}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.5:boxborderw=10:x=(w-text_w)/2:y=h-th-50",
                     "-c:a", "copy", "-y", clip_path
-                ], check=True, timeout=120)
+                ], check=True, timeout=180)
                 os.remove(temp_path)
             else:
                 os.rename(temp_path, clip_path)
