@@ -5,7 +5,6 @@ import subprocess
 import os
 import uuid
 import imageio_ffmpeg
-from supabase import create_client
 
 app = FastAPI()
 
@@ -19,7 +18,10 @@ app.add_middleware(
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_supabase():
+    from supabase import create_client
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class DownloadRequest(BaseModel):
     url: str
@@ -33,7 +35,7 @@ def health():
         "status": "ok",
         "ffmpeg": FFMPEG,
         "yt_dlp": subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip(),
-        "supabase": SUPABASE_URL
+        "supabase_url": SUPABASE_URL
     }
 
 @app.post("/process")
@@ -66,6 +68,7 @@ async def process_video(req: DownloadRequest):
         step = max_start / max(req.clip_count, 1)
         start_points = [int(i * step) for i in range(req.clip_count)]
 
+        supabase = get_supabase()
         clips = []
         for i, start in enumerate(start_points):
             clip_path = f"{work_dir}/clip_{i+1}.mp4"
@@ -76,7 +79,6 @@ async def process_video(req: DownloadRequest):
                 "-c:v", "libx264", "-c:a", "aac", "-y", clip_path
             ], check=True, timeout=180)
 
-            # Upload to Supabase
             storage_path = f"{job_id}/clip_{i+1}.mp4"
             with open(clip_path, "rb") as f:
                 supabase.storage.from_("clips").upload(storage_path, f, {"content-type": "video/mp4"})
