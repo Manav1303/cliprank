@@ -15,7 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get ffmpeg path from imageio_ffmpeg
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 FFPROBE = FFMPEG.replace("ffmpeg", "ffprobe")
 
@@ -48,10 +47,7 @@ async def process_video(req: DownloadRequest):
             "-o", original, req.url
         ], check=True, timeout=180)
 
-        result = subprocess.run([
-            FFMPEG, "-i", original
-        ], capture_output=True, text=True)
-        
+        result = subprocess.run([FFMPEG, "-i", original], capture_output=True, text=True)
         duration = None
         for line in result.stderr.split('\n'):
             if 'Duration' in line:
@@ -59,7 +55,6 @@ async def process_video(req: DownloadRequest):
                 h, m, s = time_str.split(':')
                 duration = int(h)*3600 + int(m)*60 + float(s)
                 break
-        
         if not duration:
             duration = 60
 
