@@ -2,5 +2,4 @@ fastapi
 uvicorn
 yt-dlp
 imageio-ffmpeg
-imageio-ffprobe
 supabase
