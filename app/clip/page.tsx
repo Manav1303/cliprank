@@ -4,7 +4,10 @@ import { useRouter } from 'next/navigation'
 
 export default function ClipPage() {
   const [url, setUrl] = useState('')
+  const [brief, setBrief] = useState('')
   const [niche, setNiche] = useState('')
+  const [clipCount, setClipCount] = useState('3')
+  const [clipDuration, setClipDuration] = useState('45')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -16,7 +19,6 @@ export default function ClipPage() {
     setError('')
 
     try {
-      // Step 1: Download
       setStatus('⬇️ Downloading video...')
       const dlRes = await fetch('/api/download', {
         method: 'POST',
@@ -26,28 +28,32 @@ export default function ClipPage() {
       const dlData = await dlRes.json()
       if (dlData.error) throw new Error(dlData.error)
 
-      // Step 2: Clip
       setStatus('✂️ Creating clips...')
       const clipRes = await fetch('/api/clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: dlData.job_id, output_path: dlData.output_path }),
+        body: JSON.stringify({
+          job_id: dlData.job_id,
+          output_path: dlData.output_path,
+          clip_count: parseInt(clipCount),
+          clip_duration: parseInt(clipDuration),
+          brief,
+        }),
       })
       const clipData = await clipRes.json()
       if (clipData.error) throw new Error(clipData.error)
 
-      // Step 3: SEO
-      setStatus('🔍 Generating SEO for all platforms...')
+      setStatus('🔍 Generating SEO + on-screen text...')
       const seoPromises = clipData.clips.map((_: any, i: number) =>
         fetch('/api/seo-generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, niche, clip_number: i + 1 }),
+          body: JSON.stringify({ url, niche, clip_number: i + 1, brief }),
         }).then(r => r.json())
       )
       const seoResults = await Promise.all(seoPromises)
 
-      setStatus('✅ Done! Redirecting to dashboard...')
+      setStatus('✅ Done!')
       router.push(`/dashboard?job_id=${dlData.job_id}&seo=${encodeURIComponent(JSON.stringify(seoResults))}`)
     } catch (e: any) {
       setError(e.message || 'Something went wrong')
@@ -57,66 +63,99 @@ export default function ClipPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center p-8">
-      <div className="w-full max-w-xl">
-        <h1 className="text-4xl font-bold mb-2">ClipRank ✂️</h1>
-        <p className="text-gray-400 mb-10">Paste any video URL — we'll clip, optimize and prepare it for every platform</p>
+    <main className="min-h-screen bg-black text-white p-8 max-w-2xl mx-auto">
+      <h1 className="text-4xl font-bold mb-2">ClipRank ✂️</h1>
+      <p className="text-gray-400 mb-8">Paste any video URL + campaign brief — we handle the rest</p>
 
-        <div className="space-y-4">
-          <input
-            type="text"
-            placeholder="Paste any video URL (YouTube, TikTok, Instagram, Twitter...)"
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-white"
-          />
-          <input
-            type="text"
-            placeholder="Niche (e.g. fitness, food, tech) — optional"
-            value={niche}
-            onChange={e => setNiche(e.target.value)}
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-white"
-          />
-          <button
-            onClick={handleProcess}
-            disabled={loading || !url}
-            className="w-full bg-white text-black py-3 rounded-xl font-semibold text-lg hover:bg-gray-200 transition disabled:opacity-50"
-          >
-            {loading ? status || 'Processing...' : 'Process Video →'}
-          </button>
+      <div className="space-y-4">
+        <input
+          type="text"
+          placeholder="Paste video URL (YouTube, Google Drive, Dropbox, f.io...)"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-white"
+        />
+
+        <textarea
+          placeholder="Paste campaign brief here (optional but recommended for Clipster campaigns)..."
+          value={brief}
+          onChange={e => setBrief(e.target.value)}
+          rows={6}
+          className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-white resize-none text-sm"
+        />
+
+        <input
+          type="text"
+          placeholder="Niche (e.g. music, fitness, tech) — optional"
+          value={niche}
+          onChange={e => setNiche(e.target.value)}
+          className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-white"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-gray-400 text-sm mb-2 block">Number of clips</label>
+            <select
+              value={clipCount}
+              onChange={e => setClipCount(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white"
+            >
+              <option value="1">1 clip</option>
+              <option value="3">3 clips</option>
+              <option value="5">5 clips</option>
+              <option value="10">10 clips</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-gray-400 text-sm mb-2 block">Clip duration</label>
+            <select
+              value={clipDuration}
+              onChange={e => setClipDuration(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-white"
+            >
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="45">45 seconds</option>
+              <option value="60">60 seconds</option>
+            </select>
+          </div>
         </div>
 
-        {error && (
-          <div className="mt-6 bg-red-900/30 border border-red-700 rounded-xl p-4">
-            <p className="text-red-400">{error}</p>
-          </div>
-        )}
+        <button
+          onClick={handleProcess}
+          disabled={loading || !url}
+          className="w-full bg-white text-black py-3 rounded-xl font-semibold text-lg hover:bg-gray-200 transition disabled:opacity-50"
+        >
+          {loading ? status || 'Processing...' : 'Process Video →'}
+        </button>
+      </div>
 
-        {loading && (
-          <div className="mt-8 space-y-3">
-            {['⬇️ Download video', '✂️ Create clips', '🔍 Generate SEO', '✅ Ready'].map((step, i) => (
-              <div key={i} className="flex items-center gap-3 text-gray-500">
-                <div className={`w-2 h-2 rounded-full ${status.includes(step.slice(3, 8)) ? 'bg-white animate-pulse' : 'bg-gray-700'}`} />
-                {step}
-              </div>
-            ))}
-          </div>
-        )}
+      {error && (
+        <div className="mt-6 bg-red-900/30 border border-red-700 rounded-xl p-4">
+          <p className="text-red-400">{error}</p>
+        </div>
+      )}
 
-        <div className="mt-12 grid grid-cols-2 gap-4">
-          {[
-            { icon: '📥', label: 'Any URL supported', sub: 'YouTube, TikTok, Instagram & more' },
-            { icon: '✂️', label: 'Auto clipping', sub: '30-60 sec viral clips' },
-            { icon: '🔍', label: 'SEO per platform', sub: 'Title, caption, hashtags' },
-            { icon: '🚀', label: 'Multi-platform', sub: 'YouTube, Facebook, TikTok, IG' },
-          ].map((f, i) => (
-            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <p className="text-2xl mb-1">{f.icon}</p>
-              <p className="text-white font-medium text-sm">{f.label}</p>
-              <p className="text-gray-500 text-xs mt-1">{f.sub}</p>
+      {loading && (
+        <div className="mt-8 space-y-3">
+          {['⬇️ Download', '✂️ Clip', '📝 On-screen text', '🔍 SEO', '✅ Done'].map((step, i) => (
+            <div key={i} className="flex items-center gap-3 text-gray-500 text-sm">
+              <div className={`w-2 h-2 rounded-full ${status.includes(step.slice(3, 6)) ? 'bg-white animate-pulse' : 'bg-gray-700'}`} />
+              {step}
             </div>
           ))}
         </div>
+      )}
+
+      <div className="mt-10 bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 className="text-white font-semibold mb-3">💡 How to use with Clipster</h3>
+        <ol className="space-y-2 text-gray-400 text-sm">
+          <li>1. Open a Clipster campaign</li>
+          <li>2. Copy the source video URL from the brief</li>
+          <li>3. Paste the full campaign brief above</li>
+          <li>4. Hit Process — AI reads the rules and clips accordingly</li>
+          <li>5. Download clips and submit to Clipster</li>
+        </ol>
       </div>
     </main>
   )

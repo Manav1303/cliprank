@@ -3,38 +3,41 @@ import { groq } from '@/lib/groq'
 
 export async function POST(req: NextRequest) {
   try {
-    const { url, niche, clip_number } = await req.json()
+    const { url, niche, clip_number, brief } = await req.json()
 
-    const prompt = `You are a viral social media SEO expert. Generate optimized SEO content for a short video clip.
+    const briefSection = brief ? `\nCampaign Brief:\n${brief}\n\nIMPORTANT: Follow the brief rules strictly. Generate on-screen text that matches the campaign guidelines.` : ''
 
-Video source URL: ${url}
+    const prompt = `You are a viral social media SEO expert and video editor.${briefSection}
+
+Video URL: ${url}
 Niche: ${niche || 'general'}
 Clip number: ${clip_number || 1}
 
-Respond ONLY with valid JSON, no markdown, no backticks:
+Generate optimized content. Respond ONLY with valid JSON, no markdown:
 {
+  "on_screen_text": "<short punchy text to burn onto the video, following brief rules if provided>",
   "youtube": {
-    "title": "<catchy YouTube title under 60 chars>",
-    "description": "<YouTube description 150 words with keywords>",
-    "tags": ["<15 relevant YouTube tags>"]
+    "title": "<catchy YouTube Shorts title under 60 chars>",
+    "description": "<YouTube description with keywords>",
+    "tags": ["<15 tags>"]
   },
   "facebook": {
-    "caption": "<engaging Facebook caption with emojis>",
-    "tags": ["<10 Facebook hashtags>"]
+    "caption": "<engaging Facebook caption>",
+    "tags": ["<10 hashtags>"]
   },
   "tiktok": {
     "caption": "<punchy TikTok caption under 150 chars>",
-    "tags": ["<10 TikTok hashtags>"]
+    "tags": ["<10 hashtags>"]
   },
   "instagram": {
     "caption": "<Instagram caption with hook and CTA>",
-    "tags": ["<15 Instagram hashtags>"]
+    "tags": ["<15 hashtags>"]
   },
   "best_time": {
-    "youtube": "<best day and time to post>",
-    "facebook": "<best day and time to post>",
-    "tiktok": "<best day and time to post>",
-    "instagram": "<best day and time to post>"
+    "youtube": "<best posting time>",
+    "facebook": "<best posting time>",
+    "tiktok": "<best posting time>",
+    "instagram": "<best posting time>"
   }
 }`
 
