@@ -5,6 +5,7 @@ import subprocess
 import os
 import uuid
 import imageio_ffmpeg
+from supabase import create_client
 
 app = FastAPI()
 
@@ -16,6 +17,9 @@ app.add_middleware(
 )
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class DownloadRequest(BaseModel):
     url: str
@@ -28,7 +32,8 @@ def health():
     return {
         "status": "ok",
         "ffmpeg": FFMPEG,
-        "yt_dlp": subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip()
+        "yt_dlp": subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip(),
+        "supabase": SUPABASE_URL
     }
 
 @app.post("/process")
@@ -71,9 +76,16 @@ async def process_video(req: DownloadRequest):
                 "-c:v", "libx264", "-c:a", "aac", "-y", clip_path
             ], check=True, timeout=180)
 
+            # Upload to Supabase
+            storage_path = f"{job_id}/clip_{i+1}.mp4"
+            with open(clip_path, "rb") as f:
+                supabase.storage.from_("clips").upload(storage_path, f, {"content-type": "video/mp4"})
+
+            public_url = supabase.storage.from_("clips").get_public_url(storage_path)
+
             clips.append({
                 "filename": f"clip_{i+1}.mp4",
-                "path": clip_path,
+                "url": public_url,
                 "start": start,
                 "duration": clip_dur,
                 "size": os.path.getsize(clip_path)
@@ -83,13 +95,3 @@ async def process_video(req: DownloadRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-from fastapi.responses import FileResponse
-
-@app.get("/download/{job_id}/{filename}")
-def download_clip(job_id: str, filename: str):
-    path = f"/tmp/{job_id}/{filename}"
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path, media_type="video/mp4", filename=filename)
