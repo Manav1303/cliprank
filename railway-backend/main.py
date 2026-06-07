@@ -4,7 +4,6 @@ from pydantic import BaseModel
 import subprocess
 import os
 import uuid
-import json
 
 app = FastAPI()
 
@@ -23,7 +22,16 @@ class DownloadRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # Check tools
+    ffmpeg_path = subprocess.run(["which", "ffmpeg"], capture_output=True, text=True).stdout.strip()
+    ffprobe_path = subprocess.run(["which", "ffprobe"], capture_output=True, text=True).stdout.strip()
+    ytdlp_path = subprocess.run(["which", "yt-dlp"], capture_output=True, text=True).stdout.strip()
+    return {
+        "status": "ok",
+        "ffmpeg": ffmpeg_path,
+        "ffprobe": ffprobe_path,
+        "yt_dlp": ytdlp_path
+    }
 
 @app.post("/process")
 async def process_video(req: DownloadRequest):
@@ -32,7 +40,6 @@ async def process_video(req: DownloadRequest):
     os.makedirs(work_dir, exist_ok=True)
 
     try:
-        # Download video
         original = f"{work_dir}/original.mp4"
         subprocess.run([
             "yt-dlp", "-f", "best[ext=mp4]/best",
@@ -40,16 +47,14 @@ async def process_video(req: DownloadRequest):
             "-o", original, req.url
         ], check=True, timeout=120)
 
-        # Get duration
         result = subprocess.run([
             "ffprobe", "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             original
-        ], capture_output=True, text=True)
+        ], capture_output=True, text=True, check=True)
         duration = float(result.stdout.strip())
 
-        # Calculate start points
         clip_dur = min(req.clip_duration, duration)
         max_start = max(0, duration - clip_dur)
         step = max_start / max(req.clip_count, 1)
@@ -60,14 +65,12 @@ async def process_video(req: DownloadRequest):
             clip_path = f"{work_dir}/clip_{i+1}.mp4"
             temp_path = f"{work_dir}/temp_{i+1}.mp4"
 
-            # Cut clip
             subprocess.run([
                 "ffmpeg", "-i", original,
                 "-ss", str(start), "-t", str(clip_dur),
                 "-c:v", "libx264", "-c:a", "aac", "-y", temp_path
             ], check=True, timeout=120)
 
-            # Add on-screen text if provided
             if req.on_screen_text:
                 text = req.on_screen_text.replace("'", "\\'")
                 subprocess.run([
@@ -79,13 +82,12 @@ async def process_video(req: DownloadRequest):
             else:
                 os.rename(temp_path, clip_path)
 
-            size = os.path.getsize(clip_path)
             clips.append({
                 "filename": f"clip_{i+1}.mp4",
                 "path": clip_path,
                 "start": start,
                 "duration": clip_dur,
-                "size": size
+                "size": os.path.getsize(clip_path)
             })
 
         return {"job_id": job_id, "clips": clips, "video_duration": duration}
