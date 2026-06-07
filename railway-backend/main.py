@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import subprocess
 import os
 import uuid
+import imageio_ffmpeg
 
 app = FastAPI()
 
@@ -14,15 +15,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Find ffmpeg/ffprobe paths
-def find_binary(name):
-    result = subprocess.run(["find", "/", "-name", name, "-type", "f"], 
-                          capture_output=True, text=True, timeout=10)
-    lines = [l for l in result.stdout.strip().split('\n') if l and 'nix' in l]
-    return lines[0] if lines else name
-
-FFMPEG = find_binary("ffmpeg")
-FFPROBE = find_binary("ffprobe")
+# Get ffmpeg path from imageio_ffmpeg
+FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+FFPROBE = FFMPEG.replace("ffmpeg", "ffprobe")
 
 class DownloadRequest(BaseModel):
     url: str
@@ -54,12 +49,19 @@ async def process_video(req: DownloadRequest):
         ], check=True, timeout=180)
 
         result = subprocess.run([
-            FFPROBE, "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            original
-        ], capture_output=True, text=True, check=True)
-        duration = float(result.stdout.strip())
+            FFMPEG, "-i", original
+        ], capture_output=True, text=True)
+        
+        duration = None
+        for line in result.stderr.split('\n'):
+            if 'Duration' in line:
+                time_str = line.split('Duration:')[1].split(',')[0].strip()
+                h, m, s = time_str.split(':')
+                duration = int(h)*3600 + int(m)*60 + float(s)
+                break
+        
+        if not duration:
+            duration = 60
 
         clip_dur = min(req.clip_duration, duration)
         max_start = max(0, duration - clip_dur)
