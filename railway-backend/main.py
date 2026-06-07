@@ -83,3 +83,13 @@ async def process_video(req: DownloadRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+from fastapi.responses import FileResponse
+
+@app.get("/download/{job_id}/{filename}")
+def download_clip(job_id: str, filename: str):
+    path = f"/tmp/{job_id}/{filename}"
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path, media_type="video/mp4", filename=filename)
