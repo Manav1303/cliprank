@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { supabaseAdmin } from '@/lib/supabase'
-import path from 'path'
-import fs from 'fs'
-
-const execAsync = promisify(exec)
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json()
+    const { url, clip_count, clip_duration, on_screen_text } = await req.json()
     if (!url) return NextResponse.json({ error: 'No URL provided' }, { status: 400 })
 
-    // Create job in Supabase
     const { data: job, error: jobError } = await supabaseAdmin
       .from('clip_jobs')
       .insert({ url, status: 'downloading' })
@@ -21,24 +14,19 @@ export async function POST(req: NextRequest) {
 
     if (jobError) return NextResponse.json({ error: jobError.message }, { status: 500 })
 
-    const outputDir = path.join('/tmp', job.id)
-    fs.mkdirSync(outputDir, { recursive: true })
+    const railwayUrl = process.env.RAILWAY_BACKEND_URL || 'https://cliprank-production.up.railway.app'
+    const res = await fetch(`${railwayUrl}/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, clip_count: clip_count || 3, clip_duration: clip_duration || 45, on_screen_text: on_screen_text || '' }),
+    })
 
-    const outputPath = path.join(outputDir, 'original.mp4')
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || 'Railway error')
 
-    // Download video
-    await execAsync(
-      `yt-dlp -f "best[ext=mp4]/best" --merge-output-format mp4 -o "${outputPath}" "${url}"`,
-      { timeout: 120000 }
-    )
+    await supabaseAdmin.from('clip_jobs').update({ status: 'done' }).eq('id', job.id)
 
-    // Update status
-    await supabaseAdmin
-      .from('clip_jobs')
-      .update({ status: 'clipping' })
-      .eq('id', job.id)
-
-    return NextResponse.json({ job_id: job.id, output_path: outputPath })
+    return NextResponse.json({ job_id: job.id, clips: data.clips, video_duration: data.video_duration })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
